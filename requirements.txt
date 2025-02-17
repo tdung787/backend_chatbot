@@ -1,0 +1,13 @@
+llama_index==0.11.4
+bcrypt==3.2.0
+PyYAML
+SQLAlchemy
+uvicorn
+fastapi
+python-jose
+passlib
+jwt
+pydantic[email]
+matplotlib
+numpy
+sympy

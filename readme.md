@@ -15,5 +15,6 @@ OPENAI_API_KEY = "sk-your-api-key"
 pip install -r requirements.txt
 ```
 ### Chạy ứng dụng
-```uvicorn app:app --host 0.0.0.0 --port 5601 --reload
+```python
+uvicorn app:app --host 0.0.0.0 --port 5601 --reload
 ```

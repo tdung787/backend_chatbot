@@ -156,7 +156,7 @@ async def chat_api(
     if not session:
         return JSONResponse(content={"error": "Session không tồn tại"}, status_code=404)
     
-    session.title = re.sub(r'[^\w\s]', '', text)[:50] 
+    session.title = re.sub(r'[^\w\s]', '', text)[:20] 
     db.commit()
 
 
@@ -245,9 +245,11 @@ def get_tracking_data():
 #API lấy lịch sử chat (Lấy thông tin lịch sử chat của user hiện tại)
 @app.get("/chat/user/{user_id}", response_model=dict)
 def get_chat_sessions(user_id: int, db: Session = Depends(get_db)):
-    """Lấy danh sách các phiên chat của user bao gồm session_id, title và timestamp"""
+    """Lấy danh sách các phiên chat của user, sắp xếp theo thời gian mới nhất trước"""
     sessions = db.query(ChatSession.id, ChatSession.title, ChatSession.created_at)\
-                 .filter(ChatSession.user_id == user_id).all()
+                 .filter(ChatSession.user_id == user_id)\
+                 .order_by(ChatSession.created_at.desc())\
+                 .all()
     
     return {
         "title_list": [
@@ -255,7 +257,6 @@ def get_chat_sessions(user_id: int, db: Session = Depends(get_db)):
             for session in sessions
         ]
     }
-
 
 #API lấy thông tin lịch sử chat (Lấy thông tin của cuộc hội thoại với current_session_id)
 @app.get("/chat/session/{session_id}", response_model=ChatSessionSchema)

@@ -14,6 +14,10 @@ OPENAI_API_KEY = "sk-your-api-key"
 ```python
 pip install -r requirements.txt
 ```
+### Khởi tạo database
+```python
+python init_db.py
+```
 ### Chạy ứng dụng
 ```python
 uvicorn app:app --host 0.0.0.0 --port 5601 --reload

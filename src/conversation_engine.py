@@ -19,7 +19,6 @@ from src.prompts import CUSTORM_AGENT_SYSTEM_TEMPLATE
 import numpy as np
 import sympy as sp
 import matplotlib.pyplot as plt
-from sympy import Rational, latex
 from fastapi import HTTPException
 
 openai.api_key = st.secrets.openai.OPENAI_API_KEY
@@ -42,7 +41,7 @@ def save_plot():
     plt.close()
     return {
         "type": "image",
-        "url": f"/static/{filename}"
+        "url": f"http://127.0.0.1:5601/static/{filename}"
     }
 
 def sanitize_input(expression):

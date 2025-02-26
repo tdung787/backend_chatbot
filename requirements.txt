@@ -2,6 +2,7 @@ llama_index==0.11.4
 bcrypt==3.2.0
 PyYAML
 SQLAlchemy
+flask
 uvicorn
 fastapi
 python-jose
@@ -11,3 +12,7 @@ pydantic[email]
 matplotlib
 numpy
 sympy
+# opencv-python
+# pillow
+# torch
+# transformers

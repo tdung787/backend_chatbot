@@ -1,5 +1,6 @@
 import uvicorn
 import json
+import re
 from pathlib import Path
 from sqlalchemy.orm import Session
 from database.db import get_db
@@ -9,6 +10,7 @@ from pydantic import BaseModel, EmailStr
 from fastapi import FastAPI, Query, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from src.conversation_engine import initialize_chatbot, chat_response, load_chat_store
 from database.models import User, ActiveToken, ChatSession ,ChatMessage
 from database.auth import verify_password, create_access_token, verify_token
@@ -18,6 +20,8 @@ from typing import List
 
 
 app = FastAPI()
+
+app.mount("/static", StaticFiles(directory="data/images"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,7 +36,8 @@ current_session_id = None
 @app.on_event("startup")
 def startup_event():
     global agent
-    agent = None 
+    chat_store = SimpleChatStore()
+    agent = initialize_chatbot(chat_store) 
 
 def cleanup_expired_tokens(db: Session):
     """Xóa token đã hết hạn khỏi database"""
@@ -100,7 +105,7 @@ def login_user(background_tasks: BackgroundTasks, user: UserLogin, db: Session =
 
     global agent
     chat_store = SimpleChatStore()
-    agent = initialize_chatbot(chat_store, user_id=token_data["sub"])  
+    agent = initialize_chatbot(chat_store, user_id=token_data["sub"])
 
     # Kiểm tra xem user đã có session "New chat" chưa
     existing_session = (
@@ -134,8 +139,27 @@ def login_user(background_tasks: BackgroundTasks, user: UserLogin, db: Session =
 def home(user_data: dict = Depends(verify_token)):
     return {"message": f"Hello, {user_data['ho_va_ten']} ở tỉnh {user_data['noi_o']} đã đăng nhập thành công!"}
 
-
 #Response API
+@app.get("/query")
+async def chat_api(
+    session_id: int = Query(..., description="Session ID của người dùng"),
+    text: str = Query(..., description="Câu hỏi gửi đến AI"),
+    db: Session = Depends(get_db),
+    authorized: bool = Depends(verify_token),
+):
+
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        return JSONResponse(content={"error": "Session không tồn tại"}, status_code=404)
+    
+    session.title = re.sub(r'[^\w\s]', '', text)[:50] 
+    db.commit()
+
+
+    response = chat_response(agent, text, session_id, db)
+    
+    return JSONResponse(content={"text": response, "session_id": session_id})
+
 # @app.get("/query")
 # async def chat_api(
 #     session_id: int = Query(..., description="Session ID của người dùng"),
@@ -143,44 +167,29 @@ def home(user_data: dict = Depends(verify_token)):
 #     db: Session = Depends(get_db),
 #     authorized: bool = Depends(verify_token),
 # ):
-#     if agent is None:
-#         return JSONResponse(content={"error": "Agent chưa được khởi tạo"}, status_code=500)
 
 #     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 #     if not session:
 #         return JSONResponse(content={"error": "Session không tồn tại"}, status_code=404)
+    
+#     session.title = re.sub(r'[^\w\s]', '', text)[:50] 
+#     db.commit()
 
 #     response = chat_response(agent, text, session_id, db)
 
+#     # Kiểm tra nếu response là chuỗi chứa Markdown ảnh
+#     image_match = re.search(r'!\[.*?\]\((.*?)\)', response)  # Tìm URL ảnh trong Markdown
+#     image_url = image_match.group(1) if image_match else None  # Lấy URL nếu có
+
+#     if image_url:
+#         text_without_image = response.replace(image_match.group(0), "").strip()  # Xóa Markdown ảnh khỏi text
+#         return JSONResponse(content={
+#             "text": text_without_image,
+#             "image_url": image_url,
+#             "session_id": session_id
+#         })
+    
 #     return JSONResponse(content={"text": response, "session_id": session_id})
-
-
-@app.get("/query")
-async def chat_api(
-    text: str = Query(..., description="Câu hỏi gửi đến AI"),
-    db: Session = Depends(get_db),
-    authorized: bool = Depends(verify_token),
-):
-    global current_session_id
-
-    if not authorized:
-        return JSONResponse(content={"error": "Unauthorized"}, status_code=401)
-
-    if current_session_id is None:
-        return JSONResponse(content={"error": "Không có phiên chat nào. Hãy đăng nhập trước."}, status_code=400)
-
-    session = db.query(ChatSession).filter(ChatSession.id == current_session_id).first()
-    if not session:
-        return JSONResponse(content={"error": "Session không tồn tại"}, status_code=404)
-
-    session.title = text[:50] 
-    db.commit()
-
-    # Gọi hàm xử lý câu trả lời từ AI
-    response = chat_response(agent, text, current_session_id, db)
-
-    return JSONResponse(content={"text": response, "current_session_id": current_session_id})
-
 
 #Lưu cuộc hội thoại
 @app.get("/chat_store")

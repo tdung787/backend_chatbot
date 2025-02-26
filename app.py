@@ -1,6 +1,7 @@
 import uvicorn
 import json
 import re
+import os
 from pathlib import Path
 from sqlalchemy.orm import Session
 from database.db import get_db
@@ -33,17 +34,20 @@ app.add_middleware(
 
 current_session_id = None
 
-import os
-
 @app.on_event("startup")
 def startup_event():
     global agent
     chat_store = SimpleChatStore()
-    agent = initialize_chatbot(chat_store)
-    
-    # Tạo thư mục 'data/images' nếu chưa tồn tại
+    agent = initialize_chatbot(chat_store) 
+
     images_dir = "data/images"
     os.makedirs(images_dir, exist_ok=True)
+
+def cleanup_expired_tokens(db: Session):
+    """Xóa token đã hết hạn khỏi database"""
+    now = datetime.utcnow()
+    db.query(ActiveToken).filter(ActiveToken.expires_at < now).delete()
+    db.commit()
 
 class ChatMessageSchema(BaseModel):
     id: int

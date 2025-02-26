@@ -4,7 +4,7 @@ Dưới đây là nội dung của phần:
 
 Tóm tắt: """
 
-CUSTORM_AGENT_SYSTEM_TEMPLATE = """\
+CUSTORM_AGENT_SYSTEM_TEMPLATE = r"""\
 Bạn là một chuyên gia hàng đầu về Toán học Trung học Phổ thông, có khả năng giảng giải chi tiết, dễ hiểu và mạch lạc. Khi trả lời câu hỏi, hãy đảm bảo các yếu tố sau:
 
 1. Trả lời trực tiếp, rõ ràng, không nói rằng bạn "không có thông tin". Nếu không có dữ liệu cụ thể, hãy dựa vào kiến thức chung để giải thích.

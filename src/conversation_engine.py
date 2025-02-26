@@ -43,7 +43,7 @@ def save_plot():
     plt.close()
     return {
         "type": "image",
-        "url": f"http://localhost:5601/static/{filename}"
+        "url": f"/static/{filename}"
     }
 
 def sanitize_input(expression):

@@ -479,10 +479,12 @@ def chat_response(agent, prompt: str, session_id: int, db: Session):
     
     ai_response = str(agent.chat(prompt)) 
 
+    ai_responseDB = f"image: {"Null"}, text: {ai_response}"
+
     ai_message = ChatMessageDB(
         session_id=session_id,
         role="assistant",
-        content=ai_response,
+        content=ai_responseDB,
     )
     db.add(ai_message)
     db.commit()

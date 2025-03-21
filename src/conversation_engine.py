@@ -1,8 +1,10 @@
 import os
 import re
+import json
 import openai
 import uuid
 import streamlit as st
+from pathlib import Path
 from datetime import datetime
 from llama_index.core import Settings
 from llama_index.llms.openai import OpenAI
@@ -13,16 +15,23 @@ from llama_index.agent.openai import OpenAIAgent
 from llama_index.core.storage.chat_store import SimpleChatStore
 from llama_index.core.tools import FunctionTool, ToolMetadata
 from sqlalchemy.orm import Session
-from database.models import ChatMessage
+from database.models import ChatMessage as ChatMessageDB
 from src.global_settings import INDEX_STORAGE
 from src.prompts import CUSTORM_AGENT_SYSTEM_TEMPLATE
 import numpy as np
 import sympy as sp
+from typing import Union
 import matplotlib.pyplot as plt
 from fastapi import HTTPException
+from llama_index.core.llms import (
+    ChatMessage,
+    ImageBlock,
+    TextBlock,
+    MessageRole,
+)
 
 openai.api_key = st.secrets.openai.OPENAI_API_KEY
-Settings.llm = OpenAI(model="gpt-4o", temperature=0.2)
+Settings.llm = OpenAI(model="gpt-4o-2024-11-20", temperature=0.2, max_new_tokens=1500)
 
 def generate_unique_filename():
     """Generate a unique filename with timestamp and random UUID."""
@@ -373,10 +382,28 @@ def load_chat_store(session_id: int, db: Session, payload: dict):
 
     return chat_store
 
+def process_image_with_text(image_path: str, text: str):
+    """Xử lý hình ảnh và văn bản bằng OpenAI."""
+    img_path = Path(image_path)
+    if not img_path.exists():
+        return "Lỗi: Đường dẫn hình ảnh không tồn tại."
+
+    msg = ChatMessage(
+        role=MessageRole.USER,
+        blocks=[
+            TextBlock(text=text),
+            ImageBlock(path=img_path, image_mimetype="image/jpeg"),
+        ],
+    )
+
+    response = Settings.llm.chat(messages=[msg]) 
+
+    return response
+
 def initialize_chatbot(chat_store, user_id=None):
     """Khởi tạo chatbot với cấu hình."""
     if user_id is None:
-        user_id = "guest"  #có thể có vấn đề về việc bỏ qua đăng nhập
+        user_id = "guest"
         
     # Tạo bộ nhớ chatbot và load dữ liệu
     memory = ChatMemoryBuffer.from_defaults(
@@ -388,6 +415,13 @@ def initialize_chatbot(chat_store, user_id=None):
     storage_context = StorageContext.from_defaults(persist_dir=INDEX_STORAGE)
     index = load_index_from_storage(storage_context, index_id="vector")
     query_engine = index.as_query_engine(similarity_top_k=2)
+
+    image_tool = FunctionTool.from_defaults(
+        fn=process_image_with_text,
+        name="image_tool",
+        description="Nhận văn bản và hình ảnh, phân tích nội dung của hình ảnh và từ đó đưa ra trả lời cho người dùng. KẾT QUẢ TỪ TOOL NÀY NÊN ĐƯỢC TRẢ LẠI NGUYÊN VẸN CHO NGƯỜI DÙNG."
+    )
+
      
     plot_tool = FunctionTool.from_defaults(
         fn=lambda expression, show_asymptotes=True, show_derivative=False, show_extrema=True: generate_plot(
@@ -407,27 +441,45 @@ def initialize_chatbot(chat_store, user_id=None):
             description="Cung cấp câu hỏi và đáp án môn toán."
         )
     )
+    
     agent = OpenAIAgent.from_tools(
-        tools=[query_tool, plot_tool], 
+        tools=[plot_tool, image_tool], 
         memory=memory,
-        system_prompt=CUSTORM_AGENT_SYSTEM_TEMPLATE
+        system_prompt=CUSTORM_AGENT_SYSTEM_TEMPLATE,
+        verbose=True
     )
+    
     return agent
+
 
 def chat_response(agent, prompt: str, session_id: int, db: Session):
     """Nhận prompt và trả về phản hồi từ AI, đồng thời lưu tin nhắn vào database."""
+    if "image_tool(" in prompt:
+        image_path = prompt.split("image_tool('")[1].split("'")[0]  # Lấy đường dẫn ảnh
+        text = prompt.split("', '")[1][:-2]  # Lấy phần nội dung text
+    else:
+        image_path = "Null"
+        text = prompt
 
-    user_message = ChatMessage(
+    promptDB = f"image: {image_path}, text: {text}"
+
+    user_message = ChatMessageDB(
         session_id=session_id,
         role="user",
-        content=prompt,
+        content=promptDB,
     )
     db.add(user_message)
     db.commit()
 
-    ai_response = str(agent.chat(prompt))
+    """
+    Bug: Gặp bug nếu gửi prompt mà không có hình ảnh thì hỏi lại cùng prompt đó có hình ảnh sẽ gặp bị output cụt ngủn
+    Nhận định: Có thể liên quan đến memory
+    Hướng fix: Sự tương tác giữa image_tool, agent và memory
+    """
+    
+    ai_response = str(agent.chat(prompt)) 
 
-    ai_message = ChatMessage(
+    ai_message = ChatMessageDB(
         session_id=session_id,
         role="assistant",
         content=ai_response,

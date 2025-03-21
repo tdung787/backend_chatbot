@@ -2,13 +2,16 @@ import uvicorn
 import json
 import re
 import os
+import openai
+import shutil
+import streamlit as st
 from pathlib import Path
 from sqlalchemy.orm import Session
 from database.db import get_db
 from database.api import router as auth_router
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
-from fastapi import FastAPI, Query, Depends, HTTPException, BackgroundTasks
+from pydantic import BaseModel, EmailStr, HttpUrl
+from fastapi import FastAPI, Query, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,8 +20,12 @@ from database.models import User, ActiveToken, ChatSession ,ChatMessage
 from database.auth import verify_password, create_access_token, verify_token
 from database.tracking import update_tracking_data
 from llama_index.core.storage.chat_store import SimpleChatStore
-from typing import List
+from typing import List, Optional, Union
+from llama_index.llms.openai import OpenAI
+from llama_index.core import Settings
 
+openai.api_key = st.secrets.openai.OPENAI_API_KEY
+openai_llm = OpenAI(model="gpt-4o", max_new_tokens=900, temperature=0.2)
 
 app = FastAPI()
 
@@ -68,10 +75,9 @@ class ChatSessionSchema(BaseModel):
         orm_mode = True
 
 class MessageInput(BaseModel):
-    user_id: int
     session_id: int
-    role: str
-    content: str
+    text: Union[str, List[dict]]  # Chấp nhận string hoặc list chứa text + image_url
+    image_url: Optional[HttpUrl] = None
 
 class CreateSessionInput(BaseModel):
     user_id: int
@@ -139,30 +145,46 @@ def login_user(background_tasks: BackgroundTasks, user: UserLogin, db: Session =
         "session_title": "New chat"  
     }
 
-@app.get("/")
-def home(user_data: dict = Depends(verify_token)):
-    return {"message": f"Hello, {user_data['ho_va_ten']} ở tỉnh {user_data['noi_o']} đã đăng nhập thành công!"}
-
 #Response API
-@app.get("/query")
+@app.post("/query")
 async def chat_api(
-    session_id: int = Query(..., description="Session ID của người dùng"),
-    text: str = Query(..., description="Câu hỏi gửi đến AI"),
+    session_id: int = Form(..., description="Session ID của người dùng"),
+    text: str = Form(..., description="Câu hỏi gửi đến AI"),
+    image: UploadFile = File(None),  
     db: Session = Depends(get_db),
     authorized: bool = Depends(verify_token),
 ):
+    """API nhận câu hỏi + hình ảnh và gửi vào agent."""
 
+    # Kiểm tra session
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
         return JSONResponse(content={"error": "Session không tồn tại"}, status_code=404)
     
-    session.title = re.sub(r'[^\w\s]', '', text)[:20] 
+    # Cập nhật tiêu đề session
+    session.title = re.sub(r'[^\w\s]', '', text)[:20]  
     db.commit()
 
+    # Nếu có hình ảnh, lưu tệp vào thư mục `data/pictures/`
+    img_path = None
+    if image:
+        img_dir = Path("data/pictures")
+        img_dir.mkdir(parents=True, exist_ok=True)  # Đảm bảo thư mục tồn tại
+        img_path = img_dir / image.filename
+        with img_path.open("wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
 
-    response = chat_response(agent, text, session_id, db)
-    
+    # Gửi vào agent (có hoặc không có ảnh)
+    if img_path:
+        prompt = f"image_tool('{img_path}', '{text}')"
+    else:
+        prompt = text
+
+    response = chat_response(agent, prompt, session_id, db)
+
     return JSONResponse(content={"text": response, "session_id": session_id})
+
+
 
 # @app.get("/query")
 # async def chat_api(
@@ -176,22 +198,11 @@ async def chat_api(
 #     if not session:
 #         return JSONResponse(content={"error": "Session không tồn tại"}, status_code=404)
     
-#     session.title = re.sub(r'[^\w\s]', '', text)[:50] 
+#     session.title = re.sub(r'[^\w\s]', '', text)[:20] 
 #     db.commit()
 
+
 #     response = chat_response(agent, text, session_id, db)
-
-#     # Kiểm tra nếu response là chuỗi chứa Markdown ảnh
-#     image_match = re.search(r'!\[.*?\]\((.*?)\)', response)  # Tìm URL ảnh trong Markdown
-#     image_url = image_match.group(1) if image_match else None  # Lấy URL nếu có
-
-#     if image_url:
-#         text_without_image = response.replace(image_match.group(0), "").strip()  # Xóa Markdown ảnh khỏi text
-#         return JSONResponse(content={
-#             "text": text_without_image,
-#             "image_url": image_url,
-#             "session_id": session_id
-#         })
     
 #     return JSONResponse(content={"text": response, "session_id": session_id})
 

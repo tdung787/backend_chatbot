@@ -5,3 +5,9 @@ myenv
 users.db
 server.py
 latex_ocr.py
+test.py
+test_agent.py
+multimodal_local.py
+multimodal_urls.py
+API.py
+test.py

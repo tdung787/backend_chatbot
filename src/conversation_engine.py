@@ -24,12 +24,15 @@ import sympy as sp
 from typing import Union
 import matplotlib.pyplot as plt
 from fastapi import HTTPException
+from dotenv import load_dotenv
 from llama_index.core.llms import (
     ChatMessage,
     ImageBlock,
     TextBlock,
     MessageRole,
 )
+
+load_dotenv()
 
 openai.api_key = st.secrets.openai.OPENAI_API_KEY
 Settings.llm = OpenAI(model="gpt-4o-2024-11-20", temperature=0.2, max_new_tokens=1500)
@@ -401,13 +404,14 @@ def process_image_with_text(image_path: str, text: str):
 
     return response
 
+
 def webSearch(query_text):
     conn = http.client.HTTPSConnection("google.serper.dev")
     payload = json.dumps({
         "q": query_text
     })
     headers = {
-        'X-API-KEY': 'bfd526abb28903f662cf919f0241de969fc95731',
+        'X-API-KEY': os.getenv('WEB_SEARCH_API_KEY'),
         'Content-Type': 'application/json'
     }
     conn.request("POST", "/search", payload, headers)

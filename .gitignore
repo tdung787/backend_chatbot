@@ -11,3 +11,4 @@ multimodal_local.py
 multimodal_urls.py
 API.py
 test.py
+wsearch.py

@@ -180,31 +180,18 @@ async def chat_api(
     else:
         prompt = text
 
+    search_keywords = ["tìm kiếm", "tra cứu", "thông tin về", "google", "search"]
+    is_search_query = any(keyword in text.lower() for keyword in search_keywords)
+
+    if is_search_query:
+        prompt = f"webSearch_tool('{text}')"
+    else:
+        prompt = text
+
     response = chat_response(agent, prompt, session_id, db)
 
     return JSONResponse(content={"text": response, "session_id": session_id})
 
-
-
-# @app.get("/query")
-# async def chat_api(
-#     session_id: int = Query(..., description="Session ID của người dùng"),
-#     text: str = Query(..., description="Câu hỏi gửi đến AI"),
-#     db: Session = Depends(get_db),
-#     authorized: bool = Depends(verify_token),
-# ):
-
-#     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-#     if not session:
-#         return JSONResponse(content={"error": "Session không tồn tại"}, status_code=404)
-    
-#     session.title = re.sub(r'[^\w\s]', '', text)[:20] 
-#     db.commit()
-
-
-#     response = chat_response(agent, text, session_id, db)
-    
-#     return JSONResponse(content={"text": response, "session_id": session_id})
 
 #Lưu cuộc hội thoại
 @app.get("/chat_store")

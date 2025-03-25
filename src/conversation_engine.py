@@ -2,6 +2,7 @@ import os
 import re
 import json
 import openai
+import http.client
 import uuid
 import streamlit as st
 from pathlib import Path
@@ -400,6 +401,21 @@ def process_image_with_text(image_path: str, text: str):
 
     return response
 
+def webSearch(query_text):
+    conn = http.client.HTTPSConnection("google.serper.dev")
+    payload = json.dumps({
+        "q": query_text
+    })
+    headers = {
+        'X-API-KEY': 'bfd526abb28903f662cf919f0241de969fc95731',
+        'Content-Type': 'application/json'
+    }
+    conn.request("POST", "/search", payload, headers)
+    res = conn.getresponse()
+    data = res.read()
+
+    return data.decode("utf-8")
+
 def initialize_chatbot(chat_store, user_id=None):
     """Khởi tạo chatbot với cấu hình."""
     if user_id is None:
@@ -421,8 +437,12 @@ def initialize_chatbot(chat_store, user_id=None):
         name="image_tool",
         description="Nhận văn bản và hình ảnh, phân tích nội dung của hình ảnh và từ đó đưa ra trả lời cho người dùng. KẾT QUẢ TỪ TOOL NÀY NÊN ĐƯỢC TRẢ LẠI NGUYÊN VẸN CHO NGƯỜI DÙNG."
     )
+    webSearch_tool = FunctionTool.from_defaults(
+        fn=webSearch,
+        name="webSearch_tool",
+        description="Nhận văn bản, dùng khi người dùng muốn tìm kiếm thông tin trên mạng"
+    )
 
-     
     plot_tool = FunctionTool.from_defaults(
         fn=lambda expression, show_asymptotes=True, show_derivative=False, show_extrema=True: generate_plot(
             expression, 
@@ -443,7 +463,7 @@ def initialize_chatbot(chat_store, user_id=None):
     )
     
     agent = OpenAIAgent.from_tools(
-        tools=[plot_tool, image_tool], 
+        tools=[plot_tool, image_tool, webSearch_tool], 
         memory=memory,
         system_prompt=CUSTORM_AGENT_SYSTEM_TEMPLATE,
         verbose=True
@@ -490,3 +510,5 @@ def chat_response(agent, prompt: str, session_id: int, db: Session):
     db.commit()
 
     return ai_response
+
+
